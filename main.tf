@@ -104,6 +104,8 @@ module "vpc" {
   database_subnets = [cidrsubnet(local.vpc_cidr, 8, 3), cidrsubnet(local.vpc_cidr, 8, 4)]
 
   create_database_subnet_group = true
+  create_igw = true
+  create_multiple_public_route_tables = true
 
   tags = local.tags
 }
@@ -113,21 +115,89 @@ module "security_group" {
   version = "~> 5.0"
 
   name        = local.name
-  description = "Complete MySQL example security group"
+  description = "Security group allowing access on HTTP, HTTPS, SSH, and custom Node.js port"
   vpc_id      = module.vpc.vpc_id
 
-  # ingress
+  # Ingress rules
   ingress_with_cidr_blocks = [
+    # Allow SSH access
+    {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      description = "SSH access"
+      cidr_blocks = "0.0.0.0/0"  # String, not a list
+    },
+    # Allow MySQL access from within the VPC
     {
       from_port   = 3306
       to_port     = 3306
       protocol    = "tcp"
       description = "MySQL access from within VPC"
-      cidr_blocks = module.vpc.vpc_cidr_block
+      cidr_blocks = module.vpc.vpc_cidr_block  # Make sure this is a string
     },
+    # Allow HTTPS access (port 443)
+    {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      description = "HTTPS access"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    # Allow HTTP access (port 80)
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "HTTP access"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    # Allow access to port 3030 for your Node.js app
+    {
+      from_port   = 3030
+      to_port     = 3030
+      protocol    = "tcp"
+      description = "Node.js app access"
+      cidr_blocks = "0.0.0.0/0"
+    }
   ]
 
   tags = local.tags
+}
+
+
+################################################################################
+# EC2 Instances
+################################################################################
+
+resource "aws_key_pair" "user1" {
+  key_name   = "user1"                      # The name of the key pair in AWS
+  public_key = file("~/.ssh/user1.pub")     # Path to your local public key
+}
+
+module "ec2_instance" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+  for_each = toset(["Frontend", "Backend", "Bastion"])
+
+  name                   = "instance-${each.key}"
+  instance_type          = "t2.micro"
+  key_name               = aws_key_pair.user1.key_name
+  monitoring             = true
+  vpc_security_group_ids = [module.security_group.security_group_id]
+  
+  # Assign each instance to a different subnet
+  subnet_id = lookup({
+    "Frontend" = module.vpc.public_subnets[0],
+    "Backend"  = module.vpc.public_subnets[1],
+    "Bastion"  = module.vpc.private_subnets[0]
+  }, each.key)
+
+  associate_public_ip_address = each.key != "Backend"
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
 }
 
 
