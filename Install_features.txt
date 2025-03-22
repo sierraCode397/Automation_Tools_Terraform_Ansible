@@ -1,0 +1,78 @@
+ # Install Nodejs
+
+ curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+ sudo apt-get install -y nodejs
+
+# Set Env vars
+
+sudo npm install dotenv
+
+----Create a .env file ----
+
+PORT=3000
+DB_HOST=database-1.cyhsrkoa5nux.us-east-1.rds.amazonaws.com
+DB_USER=admin
+DB_PASS=AdminAdmin123
+DB_NAME=movie_db
+NODE_ENV=dev
+
+
+require('dotenv').config()
+
+# Set env vars Frontend
+
+BACKEND_URL=44.214.108.173:3000
+
+# Search the DB DB_NAME
+
+sudo apt install mariadb-client-core
+sudo apt install mysql-client-core-8.0
+
+mysql -u < EndPoint database > admin -p
+
+
+# Create db
+
+CREATE DATABASE movie_db;
+
+---- Create the tables ----
+
+USE movie_db
+
+CREATE TABLE publications (
+    name VARCHAR(250) PRIMARY KEY,
+    avatar VARCHAR(250)
+);
+
+CREATE TABLE reviewers (
+    name VARCHAR(255) PRIMARY KEY,  -- Ensures 'name' is unique
+    publication VARCHAR(250),
+    avatar VARCHAR(250),
+    FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE CASCADE
+);
+
+
+CREATE TABLE movies (
+    title VARCHAR(250),
+    release_date VARCHAR(250),
+    score INT(11),
+    reviewer VARCHAR(250),
+    publication VARCHAR(250),
+    FOREIGN KEY (reviewer) REFERENCES reviewers(name) ON DELETE SET NULL,
+    FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE SET NULL
+);
+
+CREATE TABLE movies (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(250) NOT NULL,
+    release_year INT,
+    score INT(11),
+    reviewer_id INT,
+    publication VARCHAR(250),
+    FOREIGN KEY (reviewer_id) REFERENCES reviewers(id) ON DELETE SET NULL,
+    FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE SET NULL
+);
+
+SHOW TABLES;
+
+

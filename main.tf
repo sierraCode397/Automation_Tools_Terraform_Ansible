@@ -99,9 +99,9 @@ module "vpc" {
   cidr = local.vpc_cidr
 
   azs              = local.azs
-  public_subnets   = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k)]
-  private_subnets  = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 3)]
-  database_subnets = [for k, v in local.azs : cidrsubnet(local.vpc_cidr, 8, k + 6)]
+  public_subnets   = [cidrsubnet(local.vpc_cidr, 8, 0), cidrsubnet(local.vpc_cidr, 8, 1)]
+  private_subnets  = [cidrsubnet(local.vpc_cidr, 8, 2)]
+  database_subnets = [cidrsubnet(local.vpc_cidr, 8, 3), cidrsubnet(local.vpc_cidr, 8, 4)]
 
   create_database_subnet_group = true
 
@@ -233,91 +233,4 @@ resource "aws_security_group" "allow_traffic" {
   }
 }
 
-
-#A complete VPC
-
- # Create the VPC
-resource "aws_vpc" "tf_import_vpc" {
-  cidr_block                  = "172.31.0.0/16"
-  enable_dns_support          = true
-  enable_dns_hostnames        = true
-  instance_tenancy            = "default"
-  assign_generated_ipv6_cidr_block = false
-
-  # DHCP Options ID
-  dhcp_options_id             = "dopt-09f6f06a3750843c1"
-
-  tags = {
-    "Name" = "TerraformVPC"
-  }
-}
-
-# Create a default security group in the VPC
-resource "aws_security_group" "default_sg" {
-  name        = "default_sg"
-  description = "Default security group for the VPC"
-  vpc_id      = aws_vpc.tf_import_vpc.id
-
-  # Add a basic inbound rule to allow SSH access (Port 22)
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Allow all outbound traffic by default
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    "Name" = "default_sg"
-  }
-}
-
-# Create a default route table for the VPC
-resource "aws_route_table" "default_route_table" {
-  vpc_id = aws_vpc.tf_import_vpc.id
-
-  # Create a default route to the internet (for public subnet setup)
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.default_igw.id
-  }
-
-  tags = {
-    "Name" = "default_route_table"
-  }
-}
-
-# Create an internet gateway for internet access
-resource "aws_internet_gateway" "default_igw" {
-  vpc_id = aws_vpc.tf_import_vpc.id
-
-  tags = {
-    "Name" = "default_igw"
-  }
-}
-
-# Associate the route table with the VPC's main route table
-resource "aws_route_table_association" "main" {
-  subnet_id      = aws_subnet.public_subnet.id
-  route_table_id = aws_route_table.default_route_table.id
-}
-
-# Create a public subnet in the VPC
-resource "aws_subnet" "public_subnet" {
-  vpc_id                  = aws_vpc.tf_import_vpc.id
-  cidr_block              = "172.31.0.0/24"
-  availability_zone       = "us-east-1a"
-  map_public_ip_on_launch = true
-
-  tags = {
-    "Name" = "public_subnet"
-  }
-}
- */
+*/
