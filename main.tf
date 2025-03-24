@@ -43,7 +43,7 @@ module "db" {
 
   multi_az               = false
   db_subnet_group_name   = module.vpc.database_subnet_group
-  vpc_security_group_ids = [module.security_group.security_group_id]
+  vpc_security_group_ids = [module.rds_security_group.security_group_id]
 
   maintenance_window              = "Mon:00:00-Mon:03:00"
   backup_window                   = "03:00-06:00"
@@ -128,14 +128,6 @@ module "security_group" {
       description = "SSH access"
       cidr_blocks = "0.0.0.0/0"  # String, not a list
     },
-    # Allow MySQL access from within the VPC
-    {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      description = "MySQL access from within VPC"
-      cidr_blocks = module.vpc.vpc_cidr_block  # Make sure this is a string
-    },
     # Allow HTTPS access (port 443)
     {
       from_port   = 443
@@ -162,8 +154,53 @@ module "security_group" {
     }
   ]
 
+  # Explicit egress rules
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"  # Allows all protocols
+      description = "Allow all outbound traffic"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+
+  tags = local.tags
+  
+}
+
+module "rds_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.0"
+
+  name        = "rds-security-group"
+  description = "Security group for RDS MySQL Database"
+  vpc_id      = module.vpc.vpc_id
+
+  # Ingress rule to allow MySQL access from the public security group
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 3306
+      to_port     = 3306
+      protocol    = "tcp"
+      description = "Allow MySQL access from public instances"
+      security_groups = [module.public_security_group.security_group_id]  # Only allow access from public security group
+    }
+  ]
+
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"  # Allow all outbound traffic (or restrict if needed)
+      description = "Allow all outbound traffic"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+
   tags = local.tags
 }
+
 
 
 ################################################################################
@@ -175,11 +212,13 @@ resource "aws_key_pair" "user1" {
   public_key = file("~/.ssh/user1.pub")     # Path to your local public key
 }
 
+
 module "ec2_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   for_each = toset(["Frontend", "Backend", "Bastion"])
 
   name                   = "instance-${each.key}"
+  ami                    = "ami-084568db4383264d4"  # Ubuntu Server 24.04 LTS (x86_64)
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.user1.key_name
   monitoring             = true
@@ -200,107 +239,6 @@ module "ec2_instance" {
   }
 }
 
-
 /*
-
-#Just a VPC
-
-terraform {
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.79.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1"
-}
-
-# Create the VPC
-module "vpc" {
-  source = "terraform-aws-modules/vpc/aws"
-
-  name = "my-vpc_Isaac"
-  cidr = "10.0.0.0/16"
-
-  azs             = ["us-east-1a"]
-  private_subnets = ["10.0.1.0/24"]
-  public_subnets  = ["10.0.101.0/24"]
-
-  enable_nat_gateway  = false
-  enable_vpn_gateway  = false
-  enable_dns_hostnames = true
-  enable_dns_support  = true
-
-  tags = {
-    Terraform   = "true"
-    Environment = "dev"
-  }
-}
-
-# Create a route table for the public subnet to route traffic to the Internet Gateway
-resource "aws_route_table" "public_route_table" {
-  vpc_id = module.vpc.vpc_id
-
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = module.vpc.igw_id  
-  }
-}
-
-# -------------------------------
-# Create a Security Group for SSH, HTTP, HTTPS, and TCP 8080
-# -------------------------------
-resource "aws_security_group" "allow_traffic" {
-  name        = "allow-traffic"
-  description = "Allow SSH, HTTP, HTTPS, and TCP 8080 traffic"
-  vpc_id      = module.vpc.vpc_id
-
-  # Allow SSH from anywhere
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Allow HTTP from anywhere
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Allow HTTPS from anywhere
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Allow TCP 8080 from anywhere
-  ingress {
-    from_port   = 8080
-    to_port     = 8080
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  # Allow all outbound traffic
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "my-security-group"
-  }
-}
 
 */
