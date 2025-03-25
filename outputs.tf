@@ -98,5 +98,11 @@ output "db_instance_master_user_secret_arn" {
   description = "The ARN of the master user secret (Only available when manage_master_user_password is set to true)"
   value       = module.db.db_instance_master_user_secret_arn
 }
-
+/* 
+output "rds_master_password_secret_arn" {
+  value     = module.db.master_user_secret[0].secret_arn
+  sensitive = true 
+} */
+/* terraform output rds_master_password_secret_arn */
+/* aws secretsmanager get-secret-value --secret-id <SECRET_ARN> */
 # Default

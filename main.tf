@@ -19,6 +19,32 @@ locals {
 }
 
 ################################################################################
+# Access keys
+################################################################################
+
+resource "random_password" "db_password" {
+  length  = 16
+  special = true
+}
+
+resource "random_id" "secret_suffix" {
+  byte_length = 8
+}
+
+resource "aws_secretsmanager_secret" "rds_password" {
+  name        = "${local.name}-rds-password-${random_id.secret_suffix.hex}"
+  description = "RDS credentials for MySQL database"
+}
+
+resource "aws_secretsmanager_secret_version" "rds_password_version" {
+  secret_id     = aws_secretsmanager_secret.rds_password.id
+  secret_string = jsonencode({
+    username = "admin"
+    password = "AdminAdmin123"
+  })
+}
+
+################################################################################
 # RDS Module
 ################################################################################
 
@@ -38,7 +64,9 @@ module "db" {
   max_allocated_storage = 100
 
   db_name  = "completeMysql"
-  username = "complete_mysql"
+  username = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
+  password = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
+  manage_master_user_password = false
   port     = 3306
 
   multi_az               = false
@@ -99,7 +127,7 @@ module "vpc" {
   cidr = local.vpc_cidr
 
   azs              = local.azs
-  public_subnets   = [cidrsubnet(local.vpc_cidr, 8, 0), cidrsubnet(local.vpc_cidr, 8, 1)]
+  public_subnets   = [cidrsubnet(local.vpc_cidr, 8, 0), cidrsubnet(local.vpc_cidr, 8, 1), cidrsubnet(local.vpc_cidr, 8, 5), cidrsubnet(local.vpc_cidr, 8, 6)]
   private_subnets  = [cidrsubnet(local.vpc_cidr, 8, 2)]
   database_subnets = [cidrsubnet(local.vpc_cidr, 8, 3), cidrsubnet(local.vpc_cidr, 8, 4)]
 
@@ -151,7 +179,7 @@ module "security_group" {
       protocol    = "tcp"
       description = "Node.js app access"
       cidr_blocks = "0.0.0.0/0"
-    }
+    },
   ]
 
   # Explicit egress rules
@@ -162,7 +190,7 @@ module "security_group" {
       protocol    = "-1"  # Allows all protocols
       description = "Allow all outbound traffic"
       cidr_blocks = "0.0.0.0/0"
-    }
+    },
   ]
 
   tags = local.tags
@@ -184,16 +212,6 @@ module "rds_security_group" {
       to_port     = 3306
       protocol    = "tcp"
       description = "Allow MySQL access from public instances"
-      security_groups = [module.public_security_group.security_group_id]  # Only allow access from public security group
-    }
-  ]
-
-  egress_with_cidr_blocks = [
-    {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"  # Allow all outbound traffic (or restrict if needed)
-      description = "Allow all outbound traffic"
       cidr_blocks = "0.0.0.0/0"
     }
   ]
@@ -201,6 +219,69 @@ module "rds_security_group" {
   tags = local.tags
 }
 
+module "back_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.0"
+
+  name        = "back_security_group"
+  description = "Security group for Backend to the Database"
+  vpc_id      = module.vpc.vpc_id
+
+  # Ingress rule to allow MySQL access from the public security group
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 22
+      to_port     = 22
+      protocol    = "tcp"
+      description = "SSH access"
+      cidr_blocks = "0.0.0.0/0" # String, not a list module.ec2_instance["Bastion"].private_ip
+    },
+    # Allow HTTPS access (port 443)
+    {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      description = "HTTPS access"
+      source_security_group_id = module.alb.security_group_id
+    },
+    # Allow HTTP access (port 80)
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "HTTP access"
+      source_security_group_id = module.alb.security_group_id
+    },
+    # Allow access to port 3000 for the Node.js app
+    {
+      from_port   = 3000
+      to_port     = 3000
+      protocol    = "tcp"
+      description = "Node.js app access backend"
+      cidr_blocks = "0.0.0.0/0"
+    }
+    
+  ]
+
+    egress_with_cidr_blocks = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"  # Allows all protocols
+      description = "Allow all outbound traffic"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    {
+      from_port   = 3306
+      to_port     = 3306
+      protocol    = "tcp"
+      description = "Allow outbound MySQL traffic"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+
+  tags = local.tags
+}
 
 
 ################################################################################
@@ -222,13 +303,19 @@ module "ec2_instance" {
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.user1.key_name
   monitoring             = true
-  vpc_security_group_ids = [module.security_group.security_group_id]
   
+    # Assign different security groups
+  vpc_security_group_ids = lookup({
+    "Frontend" = [module.security_group.security_group_id],
+    "Backend"  = [module.back_security_group.security_group_id],
+    "Bastion"  = [module.security_group.security_group_id]
+  }, each.key)
+
   # Assign each instance to a different subnet
   subnet_id = lookup({
     "Frontend" = module.vpc.public_subnets[0],
-    "Backend"  = module.vpc.public_subnets[1],
-    "Bastion"  = module.vpc.private_subnets[0]
+    "Backend"  = module.vpc.private_subnets[0],
+    "Bastion"  = module.vpc.public_subnets[1]
   }, each.key)
 
   associate_public_ip_address = each.key != "Backend"
@@ -238,6 +325,72 @@ module "ec2_instance" {
     Environment = "dev"
   }
 }
+
+################################################################################
+# Application Load Balancer
+################################################################################
+
+module "alb" {
+  source = "terraform-aws-modules/alb/aws"
+
+  name               = "my-alb"
+  vpc_id             = module.vpc.vpc_id
+  subnets            = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
+  enable_deletion_protection = false
+
+  # Security Group
+  enforce_security_group_inbound_rules_on_private_link_traffic = "on"
+  security_group_ingress_rules = {
+    all_http = {
+      from_port   = 80
+      to_port     = 80
+      ip_protocol = "tcp"
+      description = "HTTP web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+    all_https = {
+      from_port   = 443
+      to_port     = 443
+      ip_protocol = "tcp"
+      description = "HTTPS web traffic"
+      cidr_ipv4   = "0.0.0.0/0"
+    }
+  }
+  security_group_egress_rules = {
+    all = {
+      ip_protocol = "-1"
+      cidr_ipv4   = local.vpc_cidr
+    }
+  }
+
+  listeners = {
+    ex-http-https-redirect = {
+      port     = 80
+      protocol = "HTTP"
+      redirect = {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+ 
+  target_groups = {
+    ex-instance = {
+      name_prefix      = "h1"
+      protocol         = "HTTP"
+      port             = 80
+      target_type = "instance"
+      target_id   = module.ec2_instance["Backend"].id
+    }
+  }
+
+  tags = {
+    Environment = "Development"
+    Project     = "Example"
+  }
+}
+
 
 /*
 

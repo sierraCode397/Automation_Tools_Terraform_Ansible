@@ -1,4 +1,5 @@
  # Install Nodejs
+ sudo apt update
 
  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
  sudo apt-get install -y nodejs
@@ -25,8 +26,10 @@ BACKEND_URL=44.214.108.173:3000
 
 # Search the DB DB_NAME
 
-sudo apt install mariadb-client-core
-sudo apt install mysql-client-core-8.0
+sudo apt update
+
+sudo apt install mariadb-client-core -y
+sudo apt install mysql-client-core-8.0 -y
 
 mysql -u < EndPoint database > admin -p
 
