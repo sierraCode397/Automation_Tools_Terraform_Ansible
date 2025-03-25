@@ -1,8 +1,37 @@
+---- Once Ansible is ready ----
+
+scp -i ~/.ssh/user1.pem ~/.ssh/user1.pem ubuntu@ec2-18-209-109-158.compute-1.amazonaws.com:/home/ubuntu/
+
+chmod 400 "user1.pem"
+
+sudo nano inventory.ini
+
+{
+[frontend]
+10.0.0.54 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+
+[backend]
+10.0.2.200 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+
+}
+
+---- Test ansible Connectivity ----
+
+ansible all -m ping -i inventory.ini
+
  # Install Nodejs
  sudo apt update
 
  curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
  sudo apt-get install -y nodejs
+
+ ---- Clone a repository ----
+
+ git clone https://github.com/aljoveza/devops-rampup.git
+
+ cd movie-analyst-ui
+
+ sudo npm install
 
 # Set Env vars
 
@@ -22,7 +51,12 @@ require('dotenv').config()
 
 # Set env vars Frontend
 
-BACKEND_URL=44.214.108.173:3000
+PORT=3030
+BACKEND_URL=10.0.2.200:3000
+
+--- Run Frontend ----
+
+sudo npm start
 
 # Search the DB DB_NAME
 
@@ -57,7 +91,7 @@ CREATE TABLE reviewers (
 
 CREATE TABLE movies (
     title VARCHAR(250),
-    release_date VARCHAR(250),
+    release_year VARCHAR(250),
     score INT(11),
     reviewer VARCHAR(250),
     publication VARCHAR(250),
@@ -65,17 +99,9 @@ CREATE TABLE movies (
     FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE SET NULL
 );
 
-CREATE TABLE movies (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    title VARCHAR(250) NOT NULL,
-    release_year INT,
-    score INT(11),
-    reviewer_id INT,
-    publication VARCHAR(250),
-    FOREIGN KEY (reviewer_id) REFERENCES reviewers(id) ON DELETE SET NULL,
-    FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE SET NULL
-);
 
 SHOW TABLES;
+
+sudo node seeds.js
 
 

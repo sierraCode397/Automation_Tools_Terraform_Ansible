@@ -1,0 +1,173 @@
+ ---- inventory.ini ----
+
+ [frontend]
+10.0.0.54 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+
+[backend]
+10.0.2.200 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+
+ansible all -m ping -i inventory.ini
+
+---- Frontend yml ----
+
+---
+- name: Setup Frontend Application
+  hosts: frontend
+  become: true
+  tasks:
+
+    - name: Update apt repository
+      apt:
+        update_cache: yes
+
+    - name: Install curl
+      apt:
+        name: curl
+        state: present
+
+    - name: Install Node.js (LTS version)
+      shell: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
+      args:
+        creates: /usr/bin/node  # Prevents reinstallation if already installed
+
+    - name: Install Git
+      apt:
+        name: git
+        state: present
+
+    - name: Clone the repository
+      git:
+        repo: 'https://github.com/aljoveza/devops-rampup.git'
+        dest: '/home/ubuntu/devops-rampup'
+        version: master
+        force: yes
+
+
+    - name: Install npm dependencies
+      npm:
+        path: /home/ubuntu/devops-rampup/movie-analyst-ui
+        state: present
+
+    - name: Install dotenv
+      npm:
+        path: /home/ubuntu/devops-rampup/movie-analyst-ui
+        name: dotenv
+        state: present
+
+    - name: Create .env file with environment variables
+      copy:
+        content: |
+          PORT=3030
+          BACKEND_URL=10.0.2.200:3000
+        dest: /home/ubuntu/devops-rampup/movie-analyst-ui/.env
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+
+ansible-playbook -i inventory.ini frontend.yml
+
+---- Backend.yml ----
+
+---
+- name: Setup Backend Application
+  hosts: backend
+  become: true
+  tasks:
+
+    - name: Update apt repository
+      apt:
+        update_cache: yes
+
+    - name: Install curl
+      apt:
+        name: curl
+        state: present
+
+    - name: Install Node.js (LTS version)
+      shell: curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash - && sudo apt-get install -y nodejs
+      args:
+        creates: /usr/bin/node  # Prevents reinstallation if already installed
+
+    - name: Install Git
+      apt:
+        name: git
+        state: present
+
+    - name: Clone the repository
+      git:
+        repo: 'https://github.com/aljoveza/devops-rampup.git'
+        dest: '/home/ubuntu/devops-rampup'
+        version: master
+        force: yes
+
+    - name: List contents of the movie-analyst-api directory
+      command: ls -l /home/ubuntu/devops-rampup/movie-analyst-api
+
+    - name: Install npm dependencies
+      npm:
+        path: /home/ubuntu/devops-rampup/movie-analyst-api
+        state: present
+
+    - name: Install dotenv
+      command: sudo npm install dotenv
+      args:
+        chdir: /home/ubuntu/devops-rampup/movie-analyst-api
+
+    - name: Create .env file with environment variables
+      copy:
+        content: |
+          PORT=3000
+          DB_HOST=complete-mysql.ckpg8c2ewfpc.us-east-1.rds.amazonaws.com
+          DB_USER=admin
+          DB_PASS=AdminAdmin123
+          DB_NAME=movie_db
+          NODE_ENV=dev
+        dest: /home/ubuntu/devops-rampup/movie-analyst-api/.env
+        owner: ubuntu
+        group: ubuntu
+        mode: '0644'
+
+    - name: Install MariaDB client
+      apt:
+        name: mariadb-client-core
+        state: present
+
+    - name: Install MySQL client
+      apt:
+        name: mysql-client-core-8.0
+        state: present
+
+    - name: Create the database and tables on RDS
+      shell: |
+        mysql -h complete-mysql.ckpg8c2ewfpc.us-east-1.rds.amazonaws.com -u admin -pAdminAdmin123 --connect-timeout=30 -e "
+          CREATE DATABASE IF NOT EXISTS movie_db;
+
+          USE movie_db;
+
+          CREATE TABLE IF NOT EXISTS publications (
+              name VARCHAR(250) PRIMARY KEY,
+              avatar VARCHAR(250)
+          );
+          CREATE TABLE IF NOT EXISTS reviewers (
+              name VARCHAR(255) PRIMARY KEY,
+              publication VARCHAR(250),
+              avatar VARCHAR(250),
+              FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE CASCADE
+          );
+          CREATE TABLE IF NOT EXISTS movies (
+              title VARCHAR(250),
+              release_year VARCHAR(250),
+              score INT(11),
+              reviewer VARCHAR(250),
+              publication VARCHAR(250),
+              FOREIGN KEY (reviewer) REFERENCES reviewers(name) ON DELETE SET NULL,
+              FOREIGN KEY (publication) REFERENCES publications(name) ON DELETE SET NULL
+          );
+        "
+      become: true
+
+
+
+ansible-playbook -i inventory.ini backend.yml
+
