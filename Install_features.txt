@@ -31,7 +31,7 @@ sudo apt update
 sudo apt install mariadb-client-core -y
 sudo apt install mysql-client-core-8.0 -y
 
-mysql -u < EndPoint database > admin -p
+mysql -h < EndPoint database > -u admin -p
 
 
 # Create db

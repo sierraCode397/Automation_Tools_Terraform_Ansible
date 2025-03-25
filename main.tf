@@ -44,6 +44,10 @@ resource "aws_secretsmanager_secret_version" "rds_password_version" {
   })
 }
 
+output "alb_security_group_id" {
+  value = module.alb.security_group_id
+}
+
 ################################################################################
 # RDS Module
 ################################################################################
@@ -134,6 +138,10 @@ module "vpc" {
   create_database_subnet_group = true
   create_igw = true
   create_multiple_public_route_tables = true
+
+  enable_nat_gateway = true
+  single_nat_gateway = true
+  one_nat_gateway_per_az = false
 
   tags = local.tags
 }
@@ -234,7 +242,7 @@ module "back_security_group" {
       to_port     = 22
       protocol    = "tcp"
       description = "SSH access"
-      cidr_blocks = "0.0.0.0/0" # String, not a list module.ec2_instance["Bastion"].private_ip
+      cidr_blocks = "0.0.0.0/0" # String, not a list. module.ec2_instance["Bastion"].private_ip
     },
     # Allow HTTPS access (port 443)
     {
@@ -242,7 +250,7 @@ module "back_security_group" {
       to_port     = 443
       protocol    = "tcp"
       description = "HTTPS access"
-      source_security_group_id = module.alb.security_group_id
+      cidr_blocks = "0.0.0.0/0"
     },
     # Allow HTTP access (port 80)
     {
@@ -250,7 +258,7 @@ module "back_security_group" {
       to_port     = 80
       protocol    = "tcp"
       description = "HTTP access"
-      source_security_group_id = module.alb.security_group_id
+      cidr_blocks = "0.0.0.0/0"
     },
     # Allow access to port 3000 for the Node.js app
     {
