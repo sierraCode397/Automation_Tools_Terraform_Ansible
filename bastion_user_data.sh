@@ -1,15 +1,85 @@
- ---- inventory.ini ----
+#!/bin/bash
+exec > /var/log/user-data.log 2>&1  # Log all output
+set -eux  # Debug mode: stop on error and print each command
 
-[frontend]
-10.0.0.54 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+cat <<EOF > /home/ubuntu/COMMANDS.txt
 
-[backend]
-10.0.2.200 ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+Firts run install_ansible.sh
+
+Send your SSH "scp -i ~/.ssh/user1.pem ~/.ssh/user1.pem ubuntu@ec2-CHANGETHIS.compute-1.amazonaws.com:/home/ubuntu/"
 
 ansible all -m ping -i inventory.ini
 
----- Frontend yml ----
 
+
+---- Set the "rds_endpoint" in the env vars of Backend and in the command of "mysql"
+
+----Change the BACKEND_URL=load_balancer_dns with the DNS of the ALB
+
+
+
+ansible-playbook -i inventory.ini frontend.yml
+
+ansible-playbook -i inventory.ini backend.yml
+
+
+
+----You should set "require('dotenv').config()" in server.js (Fron, Back) and seeds.js
+
+----Detelete the SET comand of the "Package.json" of the Backend
+
+----And then first run "seeds.js" after the "server.js Backend" and the last one "server.js Frontend"
+EOF
+
+cat <<EOF > /home/ubuntu/inventory.ini
+[frontend]
+\$FRONTEND_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+
+[backend]
+\$BACKEND_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+EOF
+
+# Create a shell script to install Ansible
+cat <<EOF > /home/ubuntu/install_ansible.sh
+#!/bin/bash
+# Update package list
+sudo apt update -y
+echo "Package list updated..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+# Install required dependencies (pipx, python3, etc.)
+sudo apt install -y python3 python3-pip pipx
+echo "Required dependencies installed..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+sudo apt install pipx -y
+echo "Starting Ansible installation..." | sudo tee -a /home/ubuntu/install_ansible.log
+
+pipx ensurepath
+echo "pipx ensurepath..." | sudo tee -a /home/ubuntu/install_ansible.log
+
+# Ensure that the shell knows about the new PATH
+# exec $SHELL
+echo "Shell reloaded..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+# Install Ansible using pipx
+pipx install --include-deps ansible || echo "Ansible install failed" | sudo tee -a /home/ubuntu/install_ansible.log
+
+# Install Ansible-core
+pipx install ansible-core || echo "Ansible-core install failed" | sudo tee -a /home/ubuntu/install_ansible.log
+
+sudo apt install ansible-core -y || echo "apt install ansible-core failed" | sudo tee -a /home/ubuntu/install_ansible.log
+echo "ansible-core installed via apt..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+# Upgrade Ansible if needed
+pipx upgrade --include-injected ansible || echo "Ansible upgrade failed" | sudo tee -a /home/ubuntu/install_ansible.log
+
+# Check Ansible version
+ANSIBLE_VERSION=\$(ansible --version 2>/dev/null | head -n 1 || echo "Ansible not installed")
+echo "Ansible Version: \$ANSIBLE_VERSION" | sudo tee -a /home/ubuntu/install_ansible.log
+
+echo "Ansible installation completed." | sudo tee -a /home/ubuntu/install_ansible.log
+EOF
+
+cat <<EOF > /home/ubuntu/frontend.yml
 ---
 - name: Setup Frontend Application
   hosts: frontend
@@ -63,12 +133,9 @@ ansible all -m ping -i inventory.ini
         owner: ubuntu
         group: ubuntu
         mode: '0644'
+EOF
 
-
-ansible-playbook -i inventory.ini frontend.yml
-
----- Backend.yml ----
-
+cat <<EOF > /home/ubuntu/backend.yml
 ---
 - name: Setup Backend Application
   hosts: backend
@@ -166,6 +233,16 @@ ansible-playbook -i inventory.ini frontend.yml
           );
         "
       become: true
+EOF
 
-ansible-playbook -i inventory.ini backend.yml
+# Make the install_ansible.sh script executable
+sudo chmod +x /home/ubuntu/install_ansible.sh
 
+echo "install_ansible.sh script created..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+# Run the install_ansible.sh script
+# sudo /home/ubuntu/install_ansible.sh
+# echo "install_ansible.sh executed..." | sudo tee -a /home/ubuntu/userdata_success.log
+
+# Confirm execution
+echo "User data executed successfully" | sudo tee -a /home/ubuntu/userdata_success.log

@@ -44,10 +44,6 @@ resource "aws_secretsmanager_secret_version" "rds_password_version" {
   })
 }
 
-output "alb_security_group_id" {
-  value = module.alb.security_group_id
-}
-
 ################################################################################
 # RDS Module
 ################################################################################
@@ -291,6 +287,56 @@ module "back_security_group" {
   tags = local.tags
 }
 
+module "load_security_group" {
+  source  = "terraform-aws-modules/security-group/aws"
+  version = "~> 5.0"
+
+  name        = local.name
+  description = "LoadBalancer"
+  vpc_id      = module.vpc.vpc_id
+
+  # Ingress rules
+  ingress_with_cidr_blocks = [
+    # Allow HTTPS access (port 443)
+    {
+      from_port   = 443
+      to_port     = 443
+      protocol    = "tcp"
+      description = "HTTPS access"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    # Allow HTTP access (port 80)
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "HTTP access"
+      cidr_blocks = "0.0.0.0/0"
+    },
+    # Allow access to port 3000 for the Node.js app
+    {
+      from_port   = 3000
+      to_port     = 3000
+      protocol    = "tcp"
+      description = "Node.js app access backend"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+
+  # Explicit egress rules
+  egress_with_cidr_blocks = [
+    {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"  # Allows all protocols
+      description = "Allow all outbound traffic"
+      cidr_blocks = "0.0.0.0/0"
+    },
+  ]
+
+  tags = local.tags
+  
+}
 
 ################################################################################
 # EC2 Instances
@@ -300,7 +346,6 @@ resource "aws_key_pair" "user1" {
   key_name   = "user1"                      # The name of the key pair in AWS
   public_key = file("~/.ssh/user1.pub")     # Path to your local public key
 }
-
 
 module "ec2_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
@@ -328,6 +373,9 @@ module "ec2_instance" {
 
   associate_public_ip_address = each.key != "Backend"
 
+  # Apply user data only for the Bastion instance
+  user_data = each.key == "Bastion" ? file("${path.module}/bastion_user_data.sh") : null
+
   tags = {
     Terraform   = "true"
     Environment = "dev"
@@ -338,68 +386,46 @@ module "ec2_instance" {
 # Application Load Balancer
 ################################################################################
 
-module "alb" {
-  source = "terraform-aws-modules/alb/aws"
-
+# Create the Load Balancer
+resource "aws_lb" "application-lb" {
   name               = "my-alb"
-  vpc_id             = module.vpc.vpc_id
+  internal           = false
+  ip_address_type    = "ipv4"
+  load_balancer_type = "application"
+  security_groups    = [module.load_security_group.security_group_id]
   subnets            = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
   enable_deletion_protection = false
-
-  # Security Group
-  enforce_security_group_inbound_rules_on_private_link_traffic = "on"
-  security_group_ingress_rules = {
-    all_http = {
-      from_port   = 80
-      to_port     = 80
-      ip_protocol = "tcp"
-      description = "HTTP web traffic"
-      cidr_ipv4   = "0.0.0.0/0"
-    }
-    all_https = {
-      from_port   = 443
-      to_port     = 443
-      ip_protocol = "tcp"
-      description = "HTTPS web traffic"
-      cidr_ipv4   = "0.0.0.0/0"
-    }
-  }
-  security_group_egress_rules = {
-    all = {
-      ip_protocol = "-1"
-      cidr_ipv4   = local.vpc_cidr
-    }
-  }
-
-  listeners = {
-    ex-http-https-redirect = {
-      port     = 80
-      protocol = "HTTP"
-      redirect = {
-        port        = "443"
-        protocol    = "HTTPS"
-        status_code = "HTTP_301"
-      }
-    }
-  }
- 
-  target_groups = {
-    ex-instance = {
-      name_prefix      = "h1"
-      protocol         = "HTTP"
-      port             = 80
-      target_type = "instance"
-      target_id   = module.ec2_instance["Backend"].id
-    }
-  }
+  enable_cross_zone_load_balancing = true
 
   tags = {
-    Environment = "Development"
-    Project     = "Example"
+    Name = "whiz-alb"
   }
 }
 
+# Create a Target Group
+resource "aws_lb_target_group" "target_group" {
+  name     = "my-target-group"
+  port     = 3000
+  protocol = "HTTP"
+  vpc_id   = module.vpc.vpc_id
+  target_type = "instance"
+}
 
-/*
+# Create an HTTP Listener for the Load Balancer
+resource "aws_lb_listener" "alb-listener" {
+  load_balancer_arn = aws_lb.application-lb.arn
+  port              = 80
+  protocol          = "HTTP"
 
-*/
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.target_group.arn
+  }
+}
+
+#Attachment
+resource "aws_lb_target_group_attachment" "ec2_attach" {
+  target_group_arn =  aws_lb_target_group.target_group.arn
+  target_id  = module.ec2_instance["Backend"].id
+  port             = 3000
+}

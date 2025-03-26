@@ -13,11 +13,6 @@ output "db_instance_availability_zone" {
   value       = module.db.db_instance_availability_zone
 }
 
-output "db_instance_endpoint" {
-  description = "The connection endpoint"
-  value       = module.db.db_instance_endpoint
-}
-
 output "db_instance_engine" {
   description = "The database engine"
   value       = module.db.db_instance_engine
@@ -98,6 +93,38 @@ output "db_instance_master_user_secret_arn" {
   description = "The ARN of the master user secret (Only available when manage_master_user_password is set to true)"
   value       = module.db.db_instance_master_user_secret_arn
 }
+
+output "private_ips" {
+  description = "Private IPv4 addresses of Frontend and Backend instances"
+  value = {
+    Frontend = module.ec2_instance["Frontend"].private_ip
+    Backend  = module.ec2_instance["Backend"].private_ip
+  }
+}
+
+output "public_dns" {
+  description = "Public DNS names of Frontend and Bastion instances"
+  value = {
+    Frontend = module.ec2_instance["Frontend"].public_dns
+    Bastion  = module.ec2_instance["Bastion"].public_dns
+  }
+}
+
+output "db_instance_endpoint" {
+  description = "The connection endpoint"
+  value       = module.db.db_instance_endpoint
+}
+
+output "rds_endpoint" {
+  description = "The endpoint of the RDS MySQL instance"
+  value       = module.db.this_db_instance_endpoint
+}
+
+output "load_balancer_dns" {
+  value = aws_lb.application-lb.dns_name
+  description = "The DNS name of the Load Balancer"
+}
+
 /* 
 output "rds_master_password_secret_arn" {
   value     = module.db.master_user_secret[0].secret_arn
