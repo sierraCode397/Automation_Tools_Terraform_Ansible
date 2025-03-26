@@ -2,6 +2,14 @@ provider "aws" {
   region = local.region
 }
 
+terraform {
+  backend "s3" {
+    bucket = "terraform-state-final-task"
+    key    = "terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+
 data "aws_availability_zones" "available" {}
 
 locals {
@@ -53,11 +61,10 @@ module "db" {
 
   identifier = local.name
 
-  # All available versions: http://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_MySQL.html#MySQL.Concepts.VersionMgmt
   engine               = "mysql"
   engine_version       = "8.0"
-  family               = "mysql8.0" # DB parameter group
-  major_engine_version = "8.0"      # DB option group
+  family               = "mysql8.0" 
+  major_engine_version = "8.0"      
   instance_class       = "db.t3.micro"
 
   allocated_storage     = 20
@@ -176,7 +183,7 @@ module "security_group" {
       description = "HTTP access"
       cidr_blocks = "0.0.0.0/0"
     },
-    # Allow access to port 3030 for your Node.js app
+    # Allow access to port 3030 for my Node.js app
     {
       from_port   = 3030
       to_port     = 3030
@@ -238,7 +245,7 @@ module "back_security_group" {
       to_port     = 22
       protocol    = "tcp"
       description = "SSH access"
-      cidr_blocks = "0.0.0.0/0" # String, not a list. module.ec2_instance["Bastion"].private_ip
+      cidr_blocks = "0.0.0.0/0" # module.ec2_instance["Bastion"].private_ip
     },
     # Allow HTTPS access (port 443)
     {
@@ -343,8 +350,8 @@ module "load_security_group" {
 ################################################################################
 
 resource "aws_key_pair" "user1" {
-  key_name   = "user1"                      # The name of the key pair in AWS
-  public_key = file("~/.ssh/user1.pub")     # Path to your local public key
+  key_name   = "user1"
+  public_key = file("~/.ssh/user1.pub")     # Path to my local public key
 }
 
 module "ec2_instance" {
@@ -352,12 +359,12 @@ module "ec2_instance" {
   for_each = toset(["Frontend", "Backend", "Bastion"])
 
   name                   = "instance-${each.key}"
-  ami                    = "ami-084568db4383264d4"  # Ubuntu Server 24.04 LTS (x86_64)
+  ami                    = "ami-084568db4383264d4" 
   instance_type          = "t2.micro"
   key_name               = aws_key_pair.user1.key_name
   monitoring             = true
   
-    # Assign different security groups
+  # Assign different security groups
   vpc_security_group_ids = lookup({
     "Frontend" = [module.security_group.security_group_id],
     "Backend"  = [module.back_security_group.security_group_id],
@@ -426,6 +433,6 @@ resource "aws_lb_listener" "alb-listener" {
 #Attachment
 resource "aws_lb_target_group_attachment" "ec2_attach" {
   target_group_arn =  aws_lb_target_group.target_group.arn
-  target_id  = module.ec2_instance["Backend"].id
+  target_id        = module.ec2_instance["Backend"].id
   port             = 3000
 }

@@ -110,14 +110,9 @@ output "public_dns" {
   }
 }
 
-output "db_instance_endpoint" {
-  description = "The connection endpoint"
-  value       = module.db.db_instance_endpoint
-}
-
 output "rds_endpoint" {
   description = "The endpoint of the RDS MySQL instance"
-  value       = module.db.this_db_instance_endpoint
+  value       = module.db.db_instance_endpoint
 }
 
 output "load_balancer_dns" {

@@ -1,5 +1,5 @@
 #!/bin/bash
-exec > /var/log/user-data.log 2>&1  # Log all output
+exec > /var/log/user-data.log 2>&1 
 set -eux  # Debug mode: stop on error and print each command
 
 cat <<EOF > /home/ubuntu/COMMANDS.txt
