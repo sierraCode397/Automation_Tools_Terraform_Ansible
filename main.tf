@@ -349,43 +349,24 @@ module "load_security_group" {
 # EC2 Instances
 ################################################################################
 
-resource "aws_key_pair" "user1" {
-  key_name   = "user1"
-  public_key = file("~/.ssh/user1.pub")     # Path to my local public key
-}
+module "ec2" {
+  source = "./modules/ec2"
 
-module "ec2_instance" {
-  source  = "terraform-aws-modules/ec2-instance/aws"
-  for_each = toset(["Frontend", "Backend", "Bastion"])
+  key_name        = "user1"
+  public_key_path = "~/.ssh/user1.pub"
+  ami_id          = "ami-084568db4383264d4"
+  instance_type   = "t2.micro"
 
-  name                   = "instance-${each.key}"
-  ami                    = "ami-084568db4383264d4" 
-  instance_type          = "t2.micro"
-  key_name               = aws_key_pair.user1.key_name
-  monitoring             = true
-  
-  # Assign different security groups
-  vpc_security_group_ids = lookup({
-    "Frontend" = [module.security_group.security_group_id],
-    "Backend"  = [module.back_security_group.security_group_id],
+  security_groups = {
+    "Frontend" = [module.security_group.security_group_id]
+    "Backend"  = [module.back_security_group.security_group_id]
     "Bastion"  = [module.security_group.security_group_id]
-  }, each.key)
+  }
 
-  # Assign each instance to a different subnet
-  subnet_id = lookup({
-    "Frontend" = module.vpc.public_subnets[0],
-    "Backend"  = module.vpc.private_subnets[0],
+  subnets = {
+    "Frontend" = module.vpc.public_subnets[0]
+    "Backend"  = module.vpc.private_subnets[0]
     "Bastion"  = module.vpc.public_subnets[1]
-  }, each.key)
-
-  associate_public_ip_address = each.key != "Backend"
-
-  # Apply user data only for the Bastion instance
-  user_data = each.key == "Bastion" ? file("${path.module}/bastion_user_data.sh") : null
-
-  tags = {
-    Terraform   = "true"
-    Environment = "dev"
   }
 }
 
