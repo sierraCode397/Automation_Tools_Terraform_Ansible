@@ -362,46 +362,22 @@ module "ec2" {
 # Application Load Balancer
 ################################################################################
 
-# Create the Load Balancer
-resource "aws_lb" "application-lb" {
-  name               = "my-alb"
-  internal           = false
-  ip_address_type    = "ipv4"
-  load_balancer_type = "application"
-  security_groups    = [module.load_security_group.security_group_id]
-  subnets            = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
-  enable_deletion_protection = false
-  enable_cross_zone_load_balancing = true
+module "load_balancer" {
+  source = "./modules/load_balancer"  # Path to the load balancer module
 
-  tags = {
+  name                     = "my-alb"
+  security_groups          = [module.load_security_group.security_group_id]
+  subnets                  = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
+  enable_deletion_protection = false
+  tags                     = {
     Name = "whiz-alb"
   }
-}
 
-# Create a Target Group
-resource "aws_lb_target_group" "target_group" {
-  name     = "my-target-group"
-  port     = 3000
-  protocol = "HTTP"
-  vpc_id   = module.vpc.vpc_id
-  target_type = "instance"
-}
-
-# Create an HTTP Listener for the Load Balancer
-resource "aws_lb_listener" "alb-listener" {
-  load_balancer_arn = aws_lb.application-lb.arn
-  port              = 80
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.target_group.arn
-  }
-}
-
-#Attachment
-resource "aws_lb_target_group_attachment" "ec2_attach" {
-  target_group_arn =  aws_lb_target_group.target_group.arn
-  target_id        = module.ec2_instance["Backend"].id
-  port             = 3000
+  target_group_name        = "my-target-group"
+  target_group_port        = 3000
+  target_group_protocol    = "HTTP"
+  vpc_id                   = module.vpc.vpc_id
+  listener_port            = 80
+  listener_protocol        = "HTTP"
+  target_id                = module.ec2_instance["Backend"].id
 }
