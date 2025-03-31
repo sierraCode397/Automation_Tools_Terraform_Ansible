@@ -1,0 +1,55 @@
+---
+- name: Install Ansible and Boto3
+  hosts: all
+  become: yes
+  tasks:
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: yes
+
+    - name: Install required system packages
+      ansible.builtin.apt:
+        name:
+          - software-properties-common
+          - python3-pip
+          - python3-boto3
+        state: present
+
+    - name: Add Ansible PPA
+      ansible.builtin.apt_repository:
+        repo: ppa:ansible/ansible
+        state: present
+
+    - name: Install Ansible
+      ansible.builtin.apt:
+        name: ansible
+        state: latest
+
+    - name: Ensure boto3 is installed via pip
+      ansible.builtin.pip:
+        name: boto3
+        executable: pip3
+
+    - name: Add AWS environment variables to /etc/environment (system-wide)
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        line: '{{ item }}'
+        create: yes
+      loop:
+        - 'AWS_SECRET_ACCESS_KEY="nbB0h5lnjn6hXAKmnChwivmjt8vqA+sM7SMvbR6h"'
+        - 'AWS_ACCESS_KEY_ID="AKIAX4OVLTJ2LS7KCAJQ"'
+      notify: Reload environment
+
+    - name: Ensure SSH private key is on control node only
+      become: no
+      ansible.builtin.copy:
+        src: "~/.ssh/user1.pem"  # Path to the private key on your local ma>
+        dest: "~/.ssh/user1.pem"
+        mode: '0600'
+
+  handlers:
+    - name: Reload environment
+      ansible.builtin.shell: source /etc/environment
+      args:
+        executable: /bin/bash

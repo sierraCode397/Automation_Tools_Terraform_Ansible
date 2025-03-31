@@ -4,11 +4,7 @@ set -eux  # Debug mode: stop on error and print each command
 
 cat <<EOF > /home/ubuntu/COMMANDS.txt
 
-Firts run install_ansible.sh
-
-Send your SSH "scp -i ~/.ssh/user1.pem ~/.ssh/user1.pem ubuntu@ec2-CHANGETHIS.compute-1.amazonaws.com:/home/ubuntu/"
-
-ansible all -m ping -i inventory.ini
+ansible all -i dynamic_inventory.py -m ping 
 
 
 
@@ -31,52 +27,81 @@ ansible-playbook -i inventory.ini backend.yml
 ----And then first run "seeds.js" after the "server.js Backend" and the last one "server.js Frontend"
 EOF
 
-cat <<EOF > /home/ubuntu/inventory.ini
-[frontend]
-\$FRONTEND_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
+cat <<EOF > /home/ubuntu/dynamic_inventory.py
+#!/usr/bin/env python3
 
-[backend]
-\$BACKEND_IP ansible_user=ubuntu ansible_ssh_private_key_file=~/user1.pem ansible_python_interpreter=/usr/bin/python3.12
-EOF
+import boto3
+import argparse
+import json
 
-# Create a shell script to install Ansible
-cat <<EOF > /home/ubuntu/install_ansible.sh
-#!/bin/bash
-# Update package list
-sudo apt update -y
-echo "Package list updated..." | sudo tee -a /home/ubuntu/userdata_success.log
+def get_aws_instances(region):
+    ec2 = boto3.resource('ec2', region_name=region)
+    instances = ec2.instances.filter(Filters=[{'Name': 'instance-state-name', 'Values': ['running']}])
 
-# Install required dependencies (pipx, python3, etc.)
-sudo apt install -y python3 python3-pip pipx
-echo "Required dependencies installed..." | sudo tee -a /home/ubuntu/userdata_success.log
+    hosts = {}
+    for instance in instances:
+        public_ip = instance.public_ip_address
+        if public_ip:  # Only add instances with public IPs
+            instance_name = next((tag['Value'] for tag in instance.tags if tag['Key'] == 'Name'), instance.id)
+            hosts[instance_name] = {
+                "instance_id": instance.id,
+                "ansible_user": "ubuntu",  # You can change this to 'vagrant' or another user if needed
+                "ansible_host": public_ip,
+                "ansible_ssh_private_key_file": "~/.ssh/user1.pem",  # Adjust the path to your SSH key
+                "ansible_port": "22",  # Default port for SSH, change if needed
+                "image_id": instance.image_id
+            }
 
-sudo apt install pipx -y
-echo "Starting Ansible installation..." | sudo tee -a /home/ubuntu/install_ansible.log
+    return hosts
 
-pipx ensurepath
-echo "pipx ensurepath..." | sudo tee -a /home/ubuntu/install_ansible.log
+def get_inventory(region):
+    instances = get_aws_instances(region)
+    
+    inventory = {
+        "all": {
+            "hosts": list(instances.keys()),
+        },
+        "_meta": {
+            "hostvars": {}
+        },
+        "image_ids": {
+            "ansible_user": list(instances.keys())
+        }
+    }
+    
+    for instance_name, instance in instances.items():
+        inventory["_meta"]["hostvars"][instance_name] = instance
+        inventory["_meta"]["hostvars"][instance_name]["ansible_host"] = instance["ansible_host"]
+        inventory["image_ids"][instance_name] = {
+            "image_id": instance["image_id"],  # Add only the image_id for each instance
+            "Distribution": instance["ansible_user"]
+        }
 
-# Ensure that the shell knows about the new PATH
-# exec $SHELL
-echo "Shell reloaded..." | sudo tee -a /home/ubuntu/userdata_success.log
+    return inventory
 
-# Install Ansible using pipx
-pipx install --include-deps ansible || echo "Ansible install failed" | sudo tee -a /home/ubuntu/install_ansible.log
+def parse_args():
+    parser = argparse.ArgumentParser(description="Ansible Dynamic Inventory Script")
+    parser.add_argument('--list', action='store_true', help="List inventory")
+    parser.add_argument('--host', type=str, help="Get details for a specific host")
+    return parser.parse_args()
 
-# Install Ansible-core
-pipx install ansible-core || echo "Ansible-core install failed" | sudo tee -a /home/ubuntu/install_ansible.log
+def generate_inventory():
+    region = 'us-east-1'  # Update to the desired region
+    instances = get_aws_instances(region)
 
-sudo apt install ansible-core -y || echo "apt install ansible-core failed" | sudo tee -a /home/ubuntu/install_ansible.log
-echo "ansible-core installed via apt..." | sudo tee -a /home/ubuntu/userdata_success.log
+    if args.list:
+        inventory = get_inventory(region)
+        print(json.dumps(inventory, indent=2))
 
-# Upgrade Ansible if needed
-pipx upgrade --include-injected ansible || echo "Ansible upgrade failed" | sudo tee -a /home/ubuntu/install_ansible.log
+    if args.host:
+        if args.host in instances:
+            print(json.dumps(instances[args.host], indent=2))
+        else:
+            print(f"Host {args.host} not found in inventory.")
 
-# Check Ansible version
-ANSIBLE_VERSION=\$(ansible --version 2>/dev/null | head -n 1 || echo "Ansible not installed")
-echo "Ansible Version: \$ANSIBLE_VERSION" | sudo tee -a /home/ubuntu/install_ansible.log
-
-echo "Ansible installation completed." | sudo tee -a /home/ubuntu/install_ansible.log
+if __name__ == '__main__':
+    args = parse_args()
+    generate_inventory()
 EOF
 
 cat <<EOF > /home/ubuntu/frontend.yml
@@ -236,13 +261,12 @@ cat <<EOF > /home/ubuntu/backend.yml
 EOF
 
 # Make the install_ansible.sh script executable
-sudo chmod +x /home/ubuntu/install_ansible.sh
+sudo chmod +x /home/ubuntu/dynamic_inventory.py
 
-echo "install_ansible.sh script created..." | sudo tee -a /home/ubuntu/userdata_success.log
-
+echo "install_ansible.sh script created..."
 # Run the install_ansible.sh script
 # sudo /home/ubuntu/install_ansible.sh
 # echo "install_ansible.sh executed..." | sudo tee -a /home/ubuntu/userdata_success.log
 
 # Confirm execution
-echo "User data executed successfully" | sudo tee -a /home/ubuntu/userdata_success.log
+echo "User data executed successfully"
