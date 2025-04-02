@@ -135,7 +135,7 @@ module "ec2" {
   security_groups = {
     "Frontend" = [module.security_groups["Frontend"].security_group_id]
     "Backend"  = [module.security_groups["Backend"].security_group_id]
-    "Bastion"  = [module.security_groups["Bastion"].security_group_id]
+    "Bastion"  = [module.security_groups["Frontend"].security_group_id]
   }
 
   subnets = {
