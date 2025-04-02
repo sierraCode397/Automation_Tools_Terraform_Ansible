@@ -19,94 +19,55 @@ data "aws_availability_zones" "available" {}
 ################################################################################
 
 resource "random_password" "db_password" {
-  length  = 16
-  special = true
-}
-
-resource "random_id" "secret_suffix" {
-  byte_length = 8
-}
-
-resource "aws_secretsmanager_secret" "rds_password" {
-  name        = "${local.name}-rds-password-${random_id.secret_suffix.hex}"
-  description = "RDS credentials for MySQL database"
-}
-
-resource "aws_secretsmanager_secret_version" "rds_password_version" {
-  secret_id     = aws_secretsmanager_secret.rds_password.id
-  secret_string = jsonencode({
-    username = "admin"
-    password = "AdminAdmin123"
-  })
-}
+   length  = 16
+   special = true
+ }
+ 
+ resource "random_id" "secret_suffix" {
+   byte_length = 8
+ }
+ 
+ resource "aws_secretsmanager_secret" "rds_password" {
+   name        = "${local.name}-rds-password-${random_id.secret_suffix.hex}"
+   description = "RDS credentials for MySQL database"
+ }
+ 
+ resource "aws_secretsmanager_secret_version" "rds_password_version" {
+   secret_id     = aws_secretsmanager_secret.rds_password.id
+   secret_string = jsonencode({
+     username = "admin"
+     password = "AdminAdmin123"
+   })
+ }
 
 ################################################################################
 # RDS Module
 ################################################################################
 
 module "db" {
-  source = "terraform-aws-modules/rds/aws"
+  source = "./modules/rds"  # Path to the rds module
 
-  identifier = local.name
-
-  engine               = "mysql"
-  engine_version       = "8.0"
-  family               = "mysql8.0" 
-  major_engine_version = "8.0"      
-  instance_class       = "db.t3.micro"
-
-  allocated_storage     = 20
-  max_allocated_storage = 100
-
-  db_name  = "completeMysql"
-  username = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
-  password = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
-  manage_master_user_password = false
-  port     = 3306
-
-  multi_az               = false
-  db_subnet_group_name   = module.vpc.database_subnet_group
-  vpc_security_group_ids = [module.rds_security_group.security_group_id]
-
-  maintenance_window              = "Mon:00:00-Mon:03:00"
-  backup_window                   = "03:00-06:00"
-  enabled_cloudwatch_logs_exports = ["general"]
-  create_cloudwatch_log_group     = true
-
-  skip_final_snapshot = true
-  deletion_protection = false
-
-  parameters = [
-    {
-      name  = "character_set_client"
-      value = "utf8mb4"
-    },
-    {
-      name  = "character_set_server"
-      value = "utf8mb4"
-    }
-  ]
-
-  tags = local.tags
-  db_instance_tags = {
+  name                     = local.name
+  engine                   = "mysql"
+  engine_version           = "8.0"
+  instance_class           = "db.t3.micro"
+  allocated_storage        = 20
+  max_allocated_storage    = 100
+  db_name                  = "completeMysql"
+  username                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
+  password                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
+  db_subnet_group_name     = module.vpc.database_subnet_group
+  vpc_security_group_ids   = [module.rds_security_group.security_group_id]
+  tags                     = local.tags
+  db_instance_tags         = {
     "Sensitive" = "high"
   }
-  db_option_group_tags = {
-    "Sensitive" = "low"
-  }
-  db_parameter_group_tags = {
-    "Sensitive" = "low"
-  }
-  db_subnet_group_tags = {
-    "Sensitive" = "high"
-  }
-  cloudwatch_log_group_tags = {
-    "Sensitive" = "high"
-  }
-
- storage_encrypted = false
- kms_key_id = null
-
+  db_parameter_group_tags  = {}
+  cloudwatch_log_group_tags = {}   
+  db_option_group_tags = {}
+  db_subnet_group_tags = {}
+  storage_encrypted        = false
+  kms_key_id               = null
 }
 
 
