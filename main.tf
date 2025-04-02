@@ -57,7 +57,7 @@ module "db" {
   username                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
   password                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
   db_subnet_group_name     = module.vpc.database_subnet_group
-  vpc_security_group_ids   = [module.rds_security_group.security_group_id]
+  vpc_security_group_ids   = [module.security_groups["RDS"].security_group_id]
   tags                     = local.tags
   db_instance_tags         = {
     "Sensitive" = "high"
@@ -98,201 +98,27 @@ module "vpc" {
   tags = local.tags
 }
 
-module "security_group" {
+################################################################################
+# Security Groups
+################################################################################
+
+module "security_groups" {
+  for_each = local.security_groups
+
   source  = "terraform-aws-modules/security-group/aws"
   version = "~> 5.0"
 
-  name        = local.name
-  description = "Security group allowing access on HTTP, HTTPS, SSH, and custom Node.js port"
+  name        = each.value.name
+  description = each.value.description
   vpc_id      = module.vpc.vpc_id
 
-  # Ingress rules
-  ingress_with_cidr_blocks = [
-    # Allow SSH access
-    {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      description = "SSH access"
-      cidr_blocks = "0.0.0.0/0"  # String, not a list
-    },
-    # Allow HTTPS access (port 443)
-    {
-      from_port   = 443
-      to_port     = 443
-      protocol    = "tcp"
-      description = "HTTPS access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow HTTP access (port 80)
-    {
-      from_port   = 80
-      to_port     = 80
-      protocol    = "tcp"
-      description = "HTTP access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow access to port 3030 for my Node.js app
-    {
-      from_port   = 3030
-      to_port     = 3030
-      protocol    = "tcp"
-      description = "Node.js app access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-  ]
-
-  # Explicit egress rules
-  egress_with_cidr_blocks = [
-    {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"  # Allows all protocols
-      description = "Allow all outbound traffic"
-      cidr_blocks = "0.0.0.0/0"
-    },
-  ]
-
-  tags = local.tags
-  
-}
-
-module "rds_security_group" {
-  source  = "terraform-aws-modules/security-group/aws"
-  version = "~> 5.0"
-
-  name        = "rds-security-group"
-  description = "Security group for RDS MySQL Database"
-  vpc_id      = module.vpc.vpc_id
-
-  # Ingress rule to allow MySQL access from the public security group
-  ingress_with_cidr_blocks = [
-    {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      description = "Allow MySQL access from public instances"
-      cidr_blocks = "0.0.0.0/0"
-    }
-  ]
+  ingress_with_cidr_blocks = each.value.ingress
+  egress_with_cidr_blocks  = each.value.egress
 
   tags = local.tags
 }
 
-module "back_security_group" {
-  source  = "terraform-aws-modules/security-group/aws"
-  version = "~> 5.0"
 
-  name        = "back_security_group"
-  description = "Security group for Backend to the Database"
-  vpc_id      = module.vpc.vpc_id
-
-  # Ingress rule to allow MySQL access from the public security group
-  ingress_with_cidr_blocks = [
-    {
-      from_port   = 22
-      to_port     = 22
-      protocol    = "tcp"
-      description = "SSH access"
-      cidr_blocks = "0.0.0.0/0" # module.ec2_instance["Bastion"].private_ip
-    },
-    # Allow HTTPS access (port 443)
-    {
-      from_port   = 443
-      to_port     = 443
-      protocol    = "tcp"
-      description = "HTTPS access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow HTTP access (port 80)
-    {
-      from_port   = 80
-      to_port     = 80
-      protocol    = "tcp"
-      description = "HTTP access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow access to port 3000 for the Node.js app
-    {
-      from_port   = 3000
-      to_port     = 3000
-      protocol    = "tcp"
-      description = "Node.js app access backend"
-      cidr_blocks = "0.0.0.0/0"
-    }
-    
-  ]
-
-    egress_with_cidr_blocks = [
-    {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"  # Allows all protocols
-      description = "Allow all outbound traffic"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    {
-      from_port   = 3306
-      to_port     = 3306
-      protocol    = "tcp"
-      description = "Allow outbound MySQL traffic"
-      cidr_blocks = "0.0.0.0/0"
-    }
-  ]
-
-  tags = local.tags
-}
-
-module "load_security_group" {
-  source  = "terraform-aws-modules/security-group/aws"
-  version = "~> 5.0"
-
-  name        = local.name
-  description = "LoadBalancer"
-  vpc_id      = module.vpc.vpc_id
-
-  # Ingress rules
-  ingress_with_cidr_blocks = [
-    # Allow HTTPS access (port 443)
-    {
-      from_port   = 443
-      to_port     = 443
-      protocol    = "tcp"
-      description = "HTTPS access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow HTTP access (port 80)
-    {
-      from_port   = 80
-      to_port     = 80
-      protocol    = "tcp"
-      description = "HTTP access"
-      cidr_blocks = "0.0.0.0/0"
-    },
-    # Allow access to port 3000 for the Node.js app
-    {
-      from_port   = 3000
-      to_port     = 3000
-      protocol    = "tcp"
-      description = "Node.js app access backend"
-      cidr_blocks = "0.0.0.0/0"
-    }
-  ]
-
-  # Explicit egress rules
-  egress_with_cidr_blocks = [
-    {
-      from_port   = 0
-      to_port     = 0
-      protocol    = "-1"  # Allows all protocols
-      description = "Allow all outbound traffic"
-      cidr_blocks = "0.0.0.0/0"
-    },
-  ]
-
-  tags = local.tags
-  
-}
 
 ################################################################################
 # EC2 Instances
@@ -307,9 +133,9 @@ module "ec2" {
   instance_type   = "t2.micro"
 
   security_groups = {
-    "Frontend" = [module.security_group.security_group_id]
-    "Backend"  = [module.back_security_group.security_group_id]
-    "Bastion"  = [module.security_group.security_group_id]
+    "Frontend" = [module.security_groups["Frontend"].security_group_id]
+    "Backend"  = [module.security_groups["Backend"].security_group_id]
+    "Bastion"  = [module.security_groups["Bastion"].security_group_id]
   }
 
   subnets = {
@@ -327,7 +153,7 @@ module "load_balancer" {
   source = "./modules/load_balancer"  # Path to the load balancer module
 
   name                     = "my-alb"
-  security_groups          = [module.load_security_group.security_group_id]
+  security_groups          = [module.security_groups["LoadBalancer"].security_group_id]
   subnets                  = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
   enable_deletion_protection = false
   tags                     = {

@@ -7,7 +7,7 @@ module "ec2_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   for_each = toset(["Frontend", "Backend", "Bastion"])
 
-  name                   = "instance-${each.key}"
+  name                   = "${each.key}"
   ami                    = var.ami_id
   instance_type          = var.instance_type
   key_name               = aws_key_pair.user1.key_name
