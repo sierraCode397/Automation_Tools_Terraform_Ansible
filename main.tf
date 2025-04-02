@@ -57,7 +57,7 @@ module "db" {
   username                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
   password                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
   db_subnet_group_name     = module.vpc.database_subnet_group
-  vpc_security_group_ids   = [module.security_groups["RDS"].security_group_id]
+  vpc_security_group_ids   = [module.security_groups["rds"].security_group_id]
   tags                     = local.tags
   db_instance_tags         = {
     "Sensitive" = "high"
@@ -133,9 +133,9 @@ module "ec2" {
   instance_type   = "t2.micro"
 
   security_groups = {
-    "Frontend" = [module.security_groups["Frontend"].security_group_id]
-    "Backend"  = [module.security_groups["Backend"].security_group_id]
-    "Bastion"  = [module.security_groups["Frontend"].security_group_id]
+    "Frontend" = [module.security_groups.default.security_group_id]
+    "Backend"  = [module.security_groups.back.security_group_id]
+    "Bastion"  = [module.security_groups.default.security_group_id]
   }
 
   subnets = {
@@ -153,7 +153,7 @@ module "load_balancer" {
   source = "./modules/load_balancer"  # Path to the load balancer module
 
   name                     = "my-alb"
-  security_groups          = [module.security_groups["LoadBalancer"].security_group_id]
+  security_groups          = [module.security_groups["load"].security_group_id]
   subnets                  = [module.vpc.public_subnets[2], module.vpc.public_subnets[3]]
   enable_deletion_protection = false
   tags                     = {
@@ -166,5 +166,5 @@ module "load_balancer" {
   vpc_id                   = module.vpc.vpc_id
   listener_port            = 80
   listener_protocol        = "HTTP"
-  target_id                = module.ec2_instance["Backend"].id
+  target_id                = module.ec2.instance_ids["Backend"]
 }

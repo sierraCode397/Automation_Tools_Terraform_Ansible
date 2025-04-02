@@ -98,9 +98,3 @@ output "rds_endpoint" {
   description = "The endpoint of the RDS MySQL instance"
   value       = module.db.db_instance_endpoint
 }
-
-
-output "rds_instance_endpoint" {
-  value = aws_db_instance.db.endpoint
-  description = "RDS instance endpoint"
-}

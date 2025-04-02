@@ -13,3 +13,7 @@ output "public_dns" {
     Bastion  = module.ec2_instance["Bastion"].public_dns
   }
 }
+
+output "instance_ids" {
+  value = { for key, instance in module.ec2_instance : key => instance.id }
+}
