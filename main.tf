@@ -4,7 +4,7 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "terraform-state-final-task"
+    bucket = "terraform-state-final-task1"
     key    = "terraform.tfstate"
     region = "us-east-1"
   }
@@ -27,18 +27,18 @@ resource "random_password" "db_password" {
    byte_length = 8
  }
  
- resource "aws_secretsmanager_secret" "rds_password" {
+/*  resource "aws_secretsmanager_secret" "rds_password" {
    name        = "${local.name}-rds-password-${random_id.secret_suffix.hex}"
    description = "RDS credentials for MySQL database"
- }
+ } */
  
- resource "aws_secretsmanager_secret_version" "rds_password_version" {
+/*  resource "aws_secretsmanager_secret_version" "rds_password_version" {
    secret_id     = aws_secretsmanager_secret.rds_password.id
    secret_string = jsonencode({
      username = "admin"
      password = "AdminAdmin123"
    })
- }
+ } */
 
 ################################################################################
 # RDS Module
@@ -54,8 +54,8 @@ module "db" {
   allocated_storage        = 20
   max_allocated_storage    = 100
   db_name                  = "completeMysql"
-  username                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username
-  password                 = jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password
+  username                 = "admin"    /* jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).username */
+  password                 = var.db_password     /* jsondecode(aws_secretsmanager_secret_version.rds_password_version.secret_string).password */
   db_subnet_group_name     = module.vpc.database_subnet_group
   vpc_security_group_ids   = [module.security_groups["rds"].security_group_id]
   tags                     = local.tags
@@ -69,6 +69,30 @@ module "db" {
   storage_encrypted        = false
   kms_key_id               = null
 }
+
+/* 
+export TF_VAR_db_password="AdminAdmin123"
+terraform apply
+*/
+
+/* 
+Generate a Random Password
+
+resource "random_password" "db_password" {
+  length  = 16
+  special = true
+}
+
+password   = random_password.db_password.result
+
+output "db_password" {
+  value     = random_password.db_password.result
+  sensitive = true
+}
+
+terraform output db_password  # To see the generated password (hidden by default)
+
+*/
 
 
 ################################################################################

@@ -10,6 +10,7 @@ def get_aws_instances(region):
     hosts = {}
     for instance in instances:
         public_ip = instance.public_ip_address
+        public_dns = instance.public_dns_name
         if public_ip:
             instance_name = next(
                 (tag['Value'] for tag in instance.tags if tag['Key'] == 'Name'),
@@ -21,6 +22,7 @@ def get_aws_instances(region):
                 "ansible_host": public_ip,
                 "ansible_ssh_private_key_file": "~/.ssh/user1.pem",
                 "ansible_port": "22",
+                "ansible_dns": public_dns,
                 "image_id": instance.image_id
             }
     return hosts
