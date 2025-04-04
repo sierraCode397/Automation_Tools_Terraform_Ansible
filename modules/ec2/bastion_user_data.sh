@@ -4,7 +4,10 @@ set -eux  # Debug mode: stop on error and print each command
 
 cat <<EOF > /home/ubuntu/COMMANDS.txt
 
-ansible-playbook -i managed_nodes.py Install_ansible.yml --limit instance-control.example.com -e "ansible_python_interpreter=/usr/bin/python3.10" 
+ansible ec2 -i managed_nodes.py -m ping -e "ansible_python_interpreter=/usr/bin/python3"
+
+ansible-playbook -i managed_nodes.py setting_bastion.yml --limit us-east-1-Bastion -e "ansible_python_interpreter=/usr/bin/python3" 
+
 
 
 

@@ -30,6 +30,7 @@
       ansible.builtin.pip:
         name: boto3
         executable: pip3
+        extra_args: "--break-system-packages"
 
     - name: Add AWS environment variables to /etc/environment (system-wide)
       ansible.builtin.lineinfile:
