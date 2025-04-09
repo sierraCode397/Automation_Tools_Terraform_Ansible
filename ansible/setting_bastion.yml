@@ -38,8 +38,8 @@
         line: '{{ item }}'
         create: yes
       loop:
-        - 'AWS_SECRET_ACCESS_KEY="jU0NplaxEybvavHVJKnjIPrcgK1UiZzO5bqLDOb+"'
-        - 'AWS_ACCESS_KEY_ID="AKIAX4OVLTJ2FC4IGWMH"'
+        - 'AWS_SECRET_ACCESS_KEY=""'
+        - 'AWS_ACCESS_KEY_ID=""'
       notify: Reload environment
 
     - name: Ensure SSH private key is on control node only

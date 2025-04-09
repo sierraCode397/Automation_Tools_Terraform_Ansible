@@ -90,12 +90,48 @@ def get_inventory(regions):
 
     return inventory
 
+"""  """
+
+def extract_env_values(inventory):
+    """Extract the first available load_balancer_dns and rds_endpoint from the inventory."""
+    load_balancer_dns = None
+    rds_endpoint = None
+
+    for host, vars in inventory["_meta"]["hostvars"].items():
+        if not load_balancer_dns and "load_balancer_dns" in vars:
+            load_balancer_dns = vars["load_balancer_dns"]
+        if not rds_endpoint and "rds_endpoint" in vars:
+            rds_endpoint = vars["rds_endpoint"]
+        # If both values are found, we can stop early
+        if load_balancer_dns and rds_endpoint:
+            break
+
+    return load_balancer_dns, rds_endpoint
+
+def write_env_file(load_balancer_dns, rds_endpoint, filename="env_vars.sh"):
+    """Write the export commands to a shell file."""
+    with open(filename, "w") as f:
+        f.write("#!/bin/bash\n")
+        if load_balancer_dns:
+            f.write(f'export LOAD_BALANCER_DNS="{load_balancer_dns}"\n')
+        else:
+            f.write('# No load_balancer_dns found\n')
+        if rds_endpoint:
+            f.write(f'export RDS_ENDPOINT="{rds_endpoint}"\n')
+        else:
+            f.write('# No rds_endpoint found\n')
+    print(f"Environment variables written to {filename}. To load them, run:\nsource {filename}")
+
+"""  source env_vars.sh """
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Ansible Dynamic Inventory Script")
     parser.add_argument('--list', action='store_true', help="List inventory")
     parser.add_argument('--host', type=str, help="Get details for a specific host")
     parser.add_argument('--regions', nargs='+', default=['us-east-1'],
                         help="List of AWS regions to query (default: ['us-east-1'])")
+    # New argument to trigger environment variable export:
+    parser.add_argument('--set-env', action='store_true', help="Extract and write environment variables")
     return parser.parse_args()
 
 def generate_inventory():
@@ -116,6 +152,11 @@ def generate_inventory():
         else:
             # Return empty JSON if host not found (for Ansible)
             print(json.dumps({}))
+    elif args.set_env:
+        # Extract the desired environment values from the merged inventory.
+        inventory = get_inventory(regions)
+        load_balancer_dns, rds_endpoint = extract_env_values(inventory)
+        write_env_file(load_balancer_dns, rds_endpoint)
     else:
         print("Specify --list or --host <hostname>.")
 
