@@ -4,20 +4,28 @@ set -eux  # Debug mode: stop on error and print each command
 
 cat <<EOF > /home/ubuntu/COMMANDS.txt
 
+------- LOCAL
+
 sudo chmod +x /home/ubuntu/managed_nodes.py
 
 export TF_VAR_db_password="AdminAdmin123"
-
 export AWS_SECRET_ACCESS_KEY=
 export AWS_ACCESS_KEY_ID=
 
-ansible ec2 -i managed_nodes.py -m ping -e "ansible_python_interpreter=/usr/bin/python3"
-
 ansible-playbook -i managed_nodes.py setting_bastion.yml --limit us-east-1-Bastion -e "ansible_python_interpreter=/usr/bin/python3"
 
----- Set the "rds_endpoint" in the env vars of Backend and in the command of "mysql"
+-------REMOTE
 
-----Change the BACKEND_URL=load_balancer_dns with the DNS of the ALB
+python3 ./managed_nodes.py --list
+
+python3 managed_nodes.py --set-env
+
+source env_vars.sh
+
+echo LOAD_BALANCER_DNS
+echo RDS_ENDPOINT'
+
+ansible ec2 -i managed_nodes.py -m ping -e "ansible_python_interpreter=/usr/bin/python3"
 
 ansible-playbook -i managed_nodes.py backend.yml --limit us-east-1-Backend -e "ansible_python_interpreter=/usr/bin/python3"
 
@@ -118,12 +126,48 @@ def get_inventory(regions):
 
     return inventory
 
+"""  """
+
+def extract_env_values(inventory):
+    """Extract the first available load_balancer_dns and rds_endpoint from the inventory."""
+    load_balancer_dns = None
+    rds_endpoint = None
+
+    for host, vars in inventory["_meta"]["hostvars"].items():
+        if not load_balancer_dns and "load_balancer_dns" in vars:
+            load_balancer_dns = vars["load_balancer_dns"]
+        if not rds_endpoint and "rds_endpoint" in vars:
+            rds_endpoint = vars["rds_endpoint"]
+        # If both values are found, we can stop early
+        if load_balancer_dns and rds_endpoint:
+            break
+
+    return load_balancer_dns, rds_endpoint
+
+def write_env_file(load_balancer_dns, rds_endpoint, filename="env_vars.sh"):
+    """Write the export commands to a shell file."""
+    with open(filename, "w") as f:
+        f.write("#!/bin/bash\n")
+        if load_balancer_dns:
+            f.write(f'export LOAD_BALANCER_DNS="{load_balancer_dns}"\n')
+        else:
+            f.write('# No load_balancer_dns found\n')
+        if rds_endpoint:
+            f.write(f'export RDS_ENDPOINT="{rds_endpoint}"\n')
+        else:
+            f.write('# No rds_endpoint found\n')
+    print(f"Environment variables written to {filename}. To load them, run:\nsource {filename}")
+
+""" source env_vars.sh """
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Ansible Dynamic Inventory Script")
     parser.add_argument('--list', action='store_true', help="List inventory")
     parser.add_argument('--host', type=str, help="Get details for a specific host")
     parser.add_argument('--regions', nargs='+', default=['us-east-1'],
                         help="List of AWS regions to query (default: ['us-east-1'])")
+    # New argument to trigger environment variable export:
+    parser.add_argument('--set-env', action='store_true', help="Extract and write environment variables")
     return parser.parse_args()
 
 def generate_inventory():
@@ -144,6 +188,11 @@ def generate_inventory():
         else:
             # Return empty JSON if host not found (for Ansible)
             print(json.dumps({}))
+    elif args.set_env:
+        # Extract the desired environment values from the merged inventory.
+        inventory = get_inventory(regions)
+        load_balancer_dns, rds_endpoint = extract_env_values(inventory)
+        write_env_file(load_balancer_dns, rds_endpoint)
     else:
         print("Specify --list or --host <hostname>.")
 
@@ -204,7 +253,7 @@ cat <<EOF > /home/ubuntu/frontend.yml
       copy:
         content: |
           PORT=3030
-          BACKEND_URL=my-alb-748034290.us-east-1.elb.amazonaws.com
+          BACKEND_URL={{ lookup('env', 'LOAD_BALANCER_DNS') }}
         dest: /home/ubuntu/devops-rampup/movie-analyst-ui/.env
         owner: ubuntu
         group: ubuntu
@@ -274,7 +323,7 @@ cat <<EOF > /home/ubuntu/backend.yml
       copy:
         content: |
           PORT=3000
-          DB_HOST=complete-mysql.ckpg8c2ewfpc.us-east-1.rds.amazonaws.com
+          DB_HOST={{ lookup('env','RDS_ENDPOINT') }}
           DB_USER=admin
           DB_PASS=AdminAdmin123
           DB_NAME=movie_db
@@ -296,7 +345,7 @@ cat <<EOF > /home/ubuntu/backend.yml
 
     - name: Create the database and tables on RDS
       shell: |
-        mysql -h complete-mysql.ckpg8c2ewfpc.us-east-1.rds.amazonaws.com -u admin -pAdminAdmin123 --connect-timeout=30 -e "
+        mysql -h {{ lookup('env','RDS_ENDPOINT') }} -u admin -pAdminAdmin123 --connect-timeout=30 -e "
           CREATE DATABASE IF NOT EXISTS movie_db;
 
           USE movie_db;
