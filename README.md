@@ -112,7 +112,7 @@ Here is how the deployment must to looks like
 
 ![AWS Academy Cloud Architecting](https://imgur.com/2zRYj8d.png)
 
-## Why This Roadmap Rocks
+## Why This Roadmap works
 
 * **Isolation**: QA and Prod don’t collide.
 * **Reusability**: Modules mean less copy-paste.
@@ -125,3 +125,138 @@ Here is how the deployment must to looks like
 2. **CI/CD Integration**: Pipeline your Terraform and Ansible runs for hands-off deploys.
 3. **Load Testing**: Simulate traffic to validate auto scaling and failover.
 4. **Go-Live Prep**: Finalize rollback plans, update DNS, and celebrate a smooth launch.
+
+# Build and Configure this infrastructure
+
+## Prerequisites
+
+### Create SSH Key
+- Create a SSH key named `user1`
+  ```bash
+  ssh-keygen -t rsa -b 4096 -f user1
+  ```
+ and save it in this path `~/.ssh/user1`
+
+- Convert the private key to PEM format:
+
+  ```bash
+  openssl rsa -in user1 -outform PEM -out user1.pem
+  ```
+
+- You need to be sure you have:
+  - `user1.pub`
+  - `user1.pem`
+
+- Start the SSH Agent
+
+  ```bash
+  eval "$(ssh-agent -s)"
+  ```
+
+- Add this key to your ssh:
+  ```bash
+  ssh-add ~/.ssh/user1.pem
+  ```
+## S3 Bucket
+
+Create an S3 bucket with a globally unique name. Then update your root main.tf to reference that bucket name and the AWS region where it lives.
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket = ""                     < == Update this 
+    key    = "terraform.tfstate"
+    region = ""                     < == Update this
+  }
+}
+```
+
+You should run the respective commands in your local machine and the others in the bastion ec2 instance to work correctly 
+
+### LOCAL
+
+``` bash
+export TF_VAR_db_password="AdminAdmin123"
+export AWS_SECRET_ACCESS_KEY=
+export AWS_ACCESS_KEY_ID=
+
+terraform init 
+terraform plan
+terraform apply
+
+# Wait 7 min. to complete creation of RDS 
+
+sudo chmod +x ./ansible/managed_nodes.py
+
+cd ./ansible
+```
+
+Update this task of the "setting_bastion.yml" file from this path `cd ./ansible/setting_bastion.yml` with the respective env vars:
+
+    ```
+    - name: Add AWS environment variables to /etc/environment (system-wide)
+      ansible.builtin.lineinfile:
+        path: /etc/environment
+        line: '{{ item }}'
+        create: yes
+      loop:
+        - 'AWS_SECRET_ACCESS_KEY=""'     < ==
+        - 'AWS_ACCESS_KEY_ID=""'         < ==
+      notify: Reload environment
+    ```
+And the run this:
+
+```bash 
+ansible-playbook -i managed_nodes.py setting_bastion.yml --limit us-east-1-Bastion -e "ansible_python_interpreter=/usr/bin/python3"
+```
+
+Connect by ssh to your bastion:
+
+```python
+python3 ./managed_nodes.py --list
+
+ssh -i "~/.ssh/user1.pem" ubuntu@DNS-Of-The-Bastion-Instance
+```
+
+### REMOTE - BASTION
+
+``` bash
+
+sudo chmod +x /home/ubuntu/managed_nodes.py
+
+python3 ./managed_nodes.py --list
+
+python3 managed_nodes.py --set-env
+
+source env_vars.sh
+
+echo $LOAD_BALANCER_DNS
+echo $RDS_ENDPOINT
+
+ansible ec2 -i managed_nodes.py -m ping -e "ansible_python_interpreter=/usr/bin/python3"
+
+# Type three times "yes" to allow connection to the instances
+
+ansible-playbook -i managed_nodes.py backend.yml --limit us-east-1-Backend -e "ansible_python_interpreter=/usr/bin/python3"
+
+ansible-playbook -i managed_nodes.py frontend.yml --limit us-east-1-Frontend -e "ansible_python_interpreter=/usr/bin/python3"
+```
+
+## Test the deploy
+
+Once you have deployed everything, run this command `python3 ./managed_nodes.py --list` in your bastion, or in your local run this 
+
+```python
+
+cd ./ansible
+python3 ./managed_nodes.py --list
+
+```
+
+This way you will get the public IP of the frontend instance, find it and put something like this in the browser to see the Web site `http://Public-IP-Frontend-instance:3030`. You must be able to see the frontedn, backend and the database working and showing you the information.
+
+>Even you can get the **load_balancer_dns** and only see the backend working
+
+# Congratulations you created and configured this infrastructure
+
+![AWS Academy Cloud Architecting](https://imgur.com/2zRYj8d.png)
